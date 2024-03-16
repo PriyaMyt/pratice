@@ -1,59 +1,43 @@
 #include <stdio.h>
-#include <stdlib.h>
-#include <signal.h>
-#include <time.h>
 #include <unistd.h>
+#include <time.h>
+#include <signal.h>
 
-volatile sig_atomic_t interrupted = 0;
-
-void sigint_handler(int signum) {
-    interrupted = 1;
-}
-
-void sleep_using_sleep() {
-    printf("Using sleep(3) function.\n");
-    sleep(5);
-}
-
-void sleep_using_nanosleep() {
-    printf("Using nanosleep(2) syscall.\n");
-    struct timespec req, rem;
-    req.tv_sec = 5;
-    req.tv_nsec = 0;
-
-    while (nanosleep(&req, &rem) && !interrupted) {
-        printf("nanosleep interrupted: rem time: %ld.%09ld seconds\n", rem.tv_sec, rem.tv_nsec);
-        req = rem;
+static void sig(int signo) {
+    printf("nano.c:sig : In function sig\n");
+    if (signo == SIGINT) {
+        if (signo == SIGINT) {
+            printf("^C\n");
+        }
+        struct timespec rem;
+        if (nanosleep(&rem, &rem) == -1) {
+            if (errno == EINTR) {
+                printf("nanosleep interrupted: rem time: %.9f\n",
+                       (double)rem.tv_sec + (double)rem.tv_nsec / 1000000000.0);
+            } else {
+                perror("nanosleep");
+            }
+        }
     }
 }
 
 int main(int argc, char *argv[]) {
-    if (argc != 2) {
-        printf("Usage: %s option=[0|1]\n0 : uses the sleep(3) function\n1 : uses the nanosleep(2) syscall\n", argv[0]);
+    if (argc != 2 || argv[1][0] < '0' || argv[1][0] > '1') {
+        printf("Usage: %s option=[0|1]\n", argv[0]);
+        printf(" 0 : uses the sleep(3) function\n");
+        printf(" 1 : uses the nanosleep(2) syscall\n");
         return 1;
     }
 
-    int option = atoi(argv[1]);
+    signal(SIGINT, sig);  // Register signal handler for SIGINT
 
-    // Registering signal handler for SIGINT (Ctrl+C)
-    signal(SIGINT, sigint_handler);
-
-    switch (option) {
-        case 0:
-            sleep_using_sleep();
-            break;
-        case 1:
-            sleep_using_nanosleep();
-            break;
-        default:
-            printf("Invalid option. Please choose 0 or 1.\n");
-            return 1;
-    }
-
-    if (!interrupted) {
-        printf("Sleep completed.\n");
+    if (argv[1][0] == '0') {
+        // Use sleep(3)
+        sleep(10);
     } else {
-        printf("Sleep interrupted.\n");
+        // Use nanosleep(2)
+        struct timespec t = {.tv_sec = 10, .tv_nsec = 0};
+        while (nanosleep(&t, &t) == -1 && errno == EINTR);
     }
 
     return 0;
